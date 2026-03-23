@@ -1,0 +1,58 @@
+# ============================================================
+# 활성 전략 목록 및 파라미터
+# ============================================================
+
+active_strategies:
+  - name: RSI_역추세_전략
+    description: RSI 30 이하 과매도 구간 매수, 70 이상 매도
+    active: true
+    stocks: []  # 비어 있으면 watchlist 전체 적용
+    buy_conditions:
+      - indicator: RSI
+        period: 14
+        operator: "<"
+        value: 30
+      - indicator: VOLUME
+        operator: ">"
+        value: "MA_20_volume * 1.5"
+    sell_conditions:
+      - indicator: RSI
+        period: 14
+        operator: ">"
+        value: 70
+      - type: stop_loss
+        value: -0.05
+      - type: take_profit
+        value: 0.10
+    position_size: 0.10
+    backtest_required: true
+
+  - name: 이동평균_골든크로스
+    description: 5일선이 20일선 상향 돌파 시 매수
+    active: false
+    stocks: []
+    buy_conditions:
+      - indicator: MA_CROSS
+        fast: 5
+        slow: 20
+        direction: golden
+    sell_conditions:
+      - indicator: MA_CROSS
+        fast: 5
+        slow: 20
+        direction: dead
+      - type: stop_loss
+        value: -0.05
+      - type: take_profit
+        value: 0.15
+    position_size: 0.10
+    backtest_required: true
+
+# 앙상블 가중치 (성과 기반 자동 조정됨)
+ensemble_weights:
+  quant: 0.40
+  ml: 0.35
+  llm: 0.25
+
+# 가중치 자동 조정 주기 (일)
+weight_update_interval_days: 90
