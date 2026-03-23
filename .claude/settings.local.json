@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(for dir:*)",
+      "Bash(do)",
+      "Bash(touch \"C:/Users/user/Desktop/주식자동매매 봇/Automatic-trading-program/$dir/__init__.py\")",
+      "Bash(done)"
+    ]
+  }
+}
