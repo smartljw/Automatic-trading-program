@@ -1,0 +1,123 @@
+version: "3.9"
+
+services:
+  # TimescaleDB (PostgreSQL + 시계열 확장)
+  timescaledb:
+    image: timescale/timescaledb:latest-pg15
+    container_name: trading_timescaledb
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_USER:-trading_user}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-trading_pass}
+      POSTGRES_DB: ${DB_NAME:-trading}
+    ports:
+      - "5432:5432"
+    volumes:
+      - timescale_data:/var/lib/postgresql/data
+      - ./db/migrations:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-trading_user} -d ${DB_NAME:-trading}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis (실시간 캐시 + 세션)
+  redis:
+    image: redis:7-alpine
+    container_name: trading_redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # 웹 대시보드 (FastAPI)
+  dashboard:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: dashboard
+    container_name: trading_dashboard
+    restart: unless-stopped
+    ports:
+      - "${DASHBOARD_PORT:-8000}:8000"
+    environment:
+      - TIMESCALE_URL=postgresql://${DB_USER:-trading_user}:${DB_PASSWORD:-trading_pass}@timescaledb:5432/${DB_NAME:-trading}
+      - REDIS_URL=redis://redis:6379
+    env_file:
+      - .env
+    depends_on:
+      timescaledb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./:/app
+      - model_data:/app/models
+      - storage_data:/app/storage_files
+
+  # 트레이딩 봇 코어
+  bot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: bot
+    container_name: trading_bot
+    restart: unless-stopped
+    environment:
+      - TIMESCALE_URL=postgresql://${DB_USER:-trading_user}:${DB_PASSWORD:-trading_pass}@timescaledb:5432/${DB_NAME:-trading}
+      - REDIS_URL=redis://redis:6379
+    env_file:
+      - .env
+    depends_on:
+      timescaledb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./:/app
+      - model_data:/app/models
+      - storage_data:/app/storage_files
+
+  # 야간 ML 모델 재학습 (크론 방식)
+  trainer:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: trainer
+    container_name: trading_trainer
+    restart: "no"
+    environment:
+      - TIMESCALE_URL=postgresql://${DB_USER:-trading_user}:${DB_PASSWORD:-trading_pass}@timescaledb:5432/${DB_NAME:-trading}
+      - REDIS_URL=redis://redis:6379
+    env_file:
+      - .env
+    depends_on:
+      timescaledb:
+        condition: service_healthy
+    volumes:
+      - ./:/app
+      - model_data:/app/models
+      - storage_data:/app/storage_files
+    profiles:
+      - training  # docker compose --profile training up trainer
+
+volumes:
+  timescale_data:
+    driver: local
+  redis_data:
+    driver: local
+  model_data:
+    driver: local
+  storage_data:
+    driver: local
+
+networks:
+  default:
+    name: trading_network
